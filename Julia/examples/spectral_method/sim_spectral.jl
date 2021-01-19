@@ -1,6 +1,11 @@
-using HouseholderDice, LinearAlgebra, KrylovKit, StatsBase, QuadGK, Plots, JLD
+using HouseholderDice, LinearAlgebra, KrylovKit, StatsBase, Plots
 
 
+"""
+    Implement the matrix-vector multiplication
+        yv = A' * diag(z) * A * xv
+    using HouseholderDice
+"""
 function Mx(x0::Vector{Float64}, Q::dice_ortho, z::Vector{Float64}, xv::Vector{Float64},
             yv::Vector{Float64})::Vector{Float64}
     n = length(x0)
@@ -23,6 +28,9 @@ function Mx(x0::Vector{Float64}, Q::dice_ortho, z::Vector{Float64}, xv::Vector{F
     return y
 end
 
+"""
+    Simulate the spectral method. The top eigenvector is calculated by the Krylov-Schur method
+"""
 function sim_spectral(m::Int, n::Int, T::Int, zfunc, tol::Float64=1e-3,use_dice::Bool=true)
     @assert m > n "We only consider tall orthogonal matrices with m > n"
 
@@ -53,36 +61,12 @@ function sim_spectral(m::Int, n::Int, T::Int, zfunc, tol::Float64=1e-3,use_dice:
     return (vals[1], ρ, info)
 end
 
-function calc_analytical(zfunc, z_max::Float64)
-    function calc_sa_zb(λ,zfunc,a,b)
-       v, = quadgk(s-> s^a / (λ-zfunc(s))^b * exp(-s^2/2), -10, 10);
-       # display(v)
-        return v / sqrt(2*π);
-    end
 
-    a, = quadgk(s-> zfunc(s) * s^2 * exp(-s^2/2), -10, 10);
-    a /= sqrt(2π);
-
-    θ_list = collect(range(z_max+0.00000000001, z_max+1.5, length=1000));
-    s0z1 = calc_sa_zb.(θ_list, zfunc, 0, 1);
-    s0z2 = calc_sa_zb.(θ_list, zfunc, 0, 2);
-    s2z1 = calc_sa_zb.(θ_list, zfunc, 2, 1);
-    s2z2 = calc_sa_zb.(θ_list, zfunc, 2, 2);
-
-    α_ary_dense = s2z1 ./ (s2z1-s0z1);
-    μ_list = 1 ./ (θ_list - 1 ./s2z1 .- a);
-    L_list = θ_list + (1 ./α_ary_dense .- 1)./s0z1;
-    ρ = (1 .+ (1 ./ α_ary_dense .- 1) .* s0z2./(s0z1.^2)) ./ ((1 ./α_ary_dense .- 1) .* s0z2 ./(s0z1.^2) + s2z2 ./(s2z1.^2));
-
-    sel = ρ .< 0;
-    ρ[sel] .= 0.0;
-
-    return α_ary_dense, ρ
-end
-
-
+"""
+    Do the simulation over a number of independent trials
+"""
 function do_sim(n::Int, nsims::Int, zfunc, α_ary)
-    T = 300
+    T = 350
 
     e_ary = zeros(length(α_ary), nsims)
     ρ_ary = similar(e_ary)
@@ -103,40 +87,34 @@ function do_sim(n::Int, nsims::Int, zfunc, α_ary)
     return e_ary, ρ_ary, T_ary
 end
 
-
+# zfunc specifies the nonlinear function in the generative model
 zfunc(s) = tanh(abs(s))
 z_max = 1.0
 α_ary = 1.1:0.1:3
 
 n = 10^5
-nsims = 1
-@time e_ary, ρ_ary_100000, T_ary = do_sim(n, nsims, zfunc, α_ary)
+nsims = 1 # one trial
+@time e_ary, ρ_ary_100000, T_ary1 = do_sim(n, nsims, zfunc, α_ary)
 
 n = 10^3
-nsims = 1
+nsims = 1 # one trial
 e_ary, ρ_ary_1000, T_ary = do_sim(n, nsims, zfunc, α_ary)
 
-α_ary_dense = 1.1:0.02:3
+α_ary_dense = 1.1:0.05:3
 n = 10^3
-nsims = 2000
+nsims = 10 # 10 trials, and we will show the average
+#nsims = 1000
 e_ary, ρ_ary_dense_1000, T_ary = do_sim(n, nsims, zfunc, α_ary_dense)
 
+# Calculate the analytical prediction
+include("calc_analytical.jl")
 α_analytical, ρ_analytical = calc_analytical(zfunc, z_max)
 α_add = collect(1.0:0.01:minimum(α_analytical)-0.001)
 α_analytical = [α_add; α_analytical]
 ρ_analytical = [zeros(length(α_add)); ρ_analytical]
 
-scatter(α_ary, ρ_ary_1000)
-scatter!(α_ary, ρ_ary_100000)
-plot!(α_ary_dense, mean(ρ_ary_dense_1000, dims=2))
-plot!(α_analytical, ρ_analytical)
-
-fname = string(Base.source_dir(), "/spectral.jld")
-save(fname,
-    "α_ary", α_ary,
-    "α_ary_dense", α_ary_dense,
-    "ρ_ary_1000", ρ_ary_1000,
-    "ρ_ary_100000", ρ_ary_100000,
-    "ρ_ary_dense_1000", ρ_ary_dense_1000,
-    "α_analytical", α_analytical,
-    "ρ_analytical", ρ_analytical)
+plot(α_analytical, ρ_analytical,linecolor=:black, label="Analytical Prediction", leg=:topleft)
+scatter!(α_ary, ρ_ary_100000, label="n = 10^5, 1 trial")
+scatter!(α_ary, ρ_ary_1000, label="n = 10^3, 1 trial")
+plot!(α_ary_dense, mean(ρ_ary_dense_1000, dims=2), label=string("n = 10^3, ", nsims, " trials"))
+xlims!(0.9, maximum(α_ary)+0.2)

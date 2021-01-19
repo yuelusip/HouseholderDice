@@ -2,14 +2,14 @@ using HouseholderDice, LinearAlgebra, Plots, StatsBase
 
 include("sim_ista.jl")
 
-nsims = 20000
+nsims = 200 #For better match, try nsims = 2*10^4
 α = 0.5
 n = 10^3
 m = Int(round(α * n))
 
 T = 50
 ρ = 0.2
-τ = 0.2
+τ = 0.3
 λ = 2.0
 σₛ = 2.0
 σₙ = 0.1
