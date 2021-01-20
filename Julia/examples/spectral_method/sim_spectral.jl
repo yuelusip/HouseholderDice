@@ -72,7 +72,7 @@ function do_sim(n::Int, nsims::Int, zfunc, α_ary)
     ρ_ary = similar(e_ary)
     T_ary = similar(e_ary)
 
-    @progress for (i, α) in enumerate(α_ary)
+    for (i, α) in enumerate(α_ary)
         m = Int(round(α * n))
 
         for j = 1:nsims
